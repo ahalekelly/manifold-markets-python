@@ -11,6 +11,7 @@ let buildQuery = (endCursor) => `{
   questions(first: 1000 ${!!endCursor ? `after: "${endCursor}"` : ""}) {
     edges {
       node {
+        history
         id
         title
         url

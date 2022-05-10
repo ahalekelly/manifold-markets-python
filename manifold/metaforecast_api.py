@@ -13,6 +13,14 @@ def build_query(end_cursor: Optional[str]=None):
         edges {{
         node {{
             id
+            history {{
+            id
+            options {{
+            name
+            probability
+            }}
+            timestamp
+            }}
             title
             url
             description
@@ -38,6 +46,8 @@ def build_query(end_cursor: Optional[str]=None):
 def get_all_questions():
     all_results = []
     first_result = requests.post(GRAPH_QL_ENDPOINT, json={"query": build_query(None)}).json()
+    import pdb
+    pdb.set_trace()
     end_cursor = first_result['data']['questions']['pageInfo']['endCursor']
     all_results.extend([x['node'] for x in first_result['data']['questions']['edges']])
     while end_cursor:
@@ -47,3 +57,5 @@ def get_all_questions():
     manifold = [x for x in all_results if x['id'].split('-')[0] == 'manifold']
     return manifold
 
+
+get_all_questions()
