@@ -209,6 +209,11 @@ def get_market(market_id: str) -> Market:
     else:
         return MultiMarket.from_json(market)
 
+def get_lite_market(market_id: str) -> Market:
+    url = ALL_MARKETS_URL+f'?limit=1&before={market_id}'
+    json = requests.get(url, timeout=20).json()[0]
+    market = BinaryMarket.from_json(json) if 'probability' in json else MultiMarket.from_json(json)
+    return market
 
 def get_market_cached(market_id: str) -> Market:
     try:
