@@ -177,7 +177,7 @@ def get_markets() -> List[Market]:
     while True:
         url = ALL_MARKETS_URL+f'?limit={batchSize}{"&before="+lastMarketID if lastMarketID else ""}'
         print(url)
-        json = requests.get(url).json()
+        json = requests.get(url, timeout=30).json()
 
         # If this fails, the code is out of date.
         all_mechanisms = {x["mechanism"] for x in json}
@@ -195,7 +195,7 @@ def get_markets() -> List[Market]:
 def get_market(market_id: str) -> Market:
     for attempt in range(10):
         try:
-            market = requests.get(SINGLE_MARKET_URL.format(market_id)).json()
+            market = requests.get(SINGLE_MARKET_URL.format(market_id), timeout=20).json()
         except ConnectionResetError as e:
             print("ConnectionResetError, retrying")
             print(e)
@@ -268,7 +268,7 @@ def get_full_markets_cached(use_cache: bool = True) -> List[Market]:
     return market_list
 
 def place_bet(market_id: str, outcome: str, amount: int, key: str) -> requests.Response:
-    r = requests.post(BET_URL, headers={'Content-Type': 'application/json', 'Authorization': 'Key '+key}, json={'contractId':market_id, 'outcome':outcome, 'amount':amount})
+    r = requests.post(BET_URL, headers={'Content-Type': 'application/json', 'Authorization': 'Key '+key}, json={'contractId':market_id, 'outcome':outcome, 'amount':amount}, timeout=30)
     return r
 
 def flush_cache(): # incomplete - may corrupt your cache
