@@ -94,7 +94,7 @@ class Market:
     description: str
     tags: List[str]
     url: str
-    pool: float
+    pool: dict[str, int]
     volume7Days: float
     volume24Hours: float
     mechanism: str
@@ -104,6 +104,7 @@ class Market:
     creatorAvatarUrl: Optional[str] = field(kw_only=True, default=None)
     resolution: Optional[str] = field(kw_only=True, default=None)
     resolutionTime: Optional[int] = field(kw_only=True, default=None)
+    resolutionProbability: Optional[float] = field(kw_only=True, default=None)
     # Separating into two FullMarket types would be pointlessly annoying
     bets: Optional[List[Bet]] = field(kw_only=True, default=None)
     comments: Optional[List[Bet]] = field(kw_only=True, default=None)
