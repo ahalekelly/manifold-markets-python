@@ -191,23 +191,26 @@ def get_markets() -> List[Market]:
 
     return markets
 
-
 def get_market(market_id: str) -> Market:
     for attempt in range(10):
         try:
-            market = requests.get(SINGLE_MARKET_URL.format(market_id), timeout=20).json()
+            response = requests.get(SINGLE_MARKET_URL.format(market_id), timeout=20)
+            market = response.json()
+            if "probability" in market:
+                return BinaryMarket.from_json(market)
+            else:
+                return MultiMarket.from_json(market)
         except ConnectionResetError as e:
             print("ConnectionResetError, retrying")
             print(e)
-        break
+        except requests.exceptions.JSONDecodeError as e:
+            print("JSONDecodeError")
+            print(e)
+            print(response)
+            print('retrying')
     else:
         print("Get market failed 10 times!")
         print(market_id)
-    # market['bets'] = [Bet.from_json(x) for x in market['bets']]
-    if "probability" in market:
-        return BinaryMarket.from_json(market)
-    else:
-        return MultiMarket.from_json(market)
 
 def get_lite_market(market_id: str) -> Market:
     url = ALL_MARKETS_URL+f'?limit=1&before={market_id}'
