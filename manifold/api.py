@@ -1,174 +1,16 @@
-import numpy as np
 import requests
 import pickle
-import signal
 import sys
-
-from functools import partial
-from typing import List, Tuple
 from time import time
+from types import SimpleNamespace
+import json
 from manifold import config
-
 
 ALL_MARKETS_URL = "https://manifold.markets/api/v0/markets"
 SINGLE_MARKET_URL = "https://manifold.markets/api/v0/market/{}"
 BET_URL = "https://manifold.markets/api/v0/bet"
 
-from attr import define, field
-from typing import List, Optional, TypeVar, Type, Any
-
-
-MarketT = TypeVar("MarketT", bound="Market")
-
-
-@define
-class Bet:
-    """A single bet"""
-    contractId: str
-    createdTime: int
-    shares: float
-    amount: int
-    probAfter: float
-    probBefore: float
-    id: str
-    outcome: str
-    dpmShares: Optional[float]=None
-    # TODO: Define Fees class
-    fees: Optional[dict]=None
-    # TODO: Define Sale class
-    sale: Optional[dict]=None
-    isSold: Optional[bool]=None
-    loanAmount: Optional[float]=None
-    isRedemption: Optional[bool]=None
-    isAnte: Optional[bool]=None
-    userId: Optional[str]=None
-
-    @classmethod
-    def from_json(cls, json: Any) -> "Bet":
-        return cls(**json)  # type: ignore
-
-@define
-class Answer:
-    """A single free response answer"""
-    userID: str
-    contractId: str
-    username: str
-    avatarUrl: str
-    name: str
-    createdTime: int
-    id: str
-    text: str
-    number: int
-
-    @classmethod
-    def from_json(cls, json: Any) -> "Answer":
-        return cls(**json)  # type: ignore
-
-@define
-class Comment:
-    """A comment on a market"""
-    id: str
-    contractId: str
-    userUsername: str
-    userAvatarUrl: str
-    userId: str
-    text: str
-    createdTime: int
-    userName: str
-    betId: Optional[str]=None
-    answerOutcome: Optional[str]=None
-
-    @classmethod
-    def from_json(cls, json: Any) -> "Comment":
-        return cls(**json)  # type: ignore
-
-
-@define
-class Market:
-    """A market"""
-    id: str
-    creatorUsername: str
-    creatorName: str
-    createdTime: int
-    question: str
-    description: str
-    tags: List[str]
-    url: str
-    pool: dict[str, int]
-    volume7Days: float
-    volume24Hours: float
-    mechanism: str
-    isResolved: bool
-    answers: Optional[List[Answer]] = field(kw_only=True, default=None)
-    closeTime: Optional[int] = field(kw_only=True, default=None)
-    creatorAvatarUrl: Optional[str] = field(kw_only=True, default=None)
-    resolution: Optional[str] = field(kw_only=True, default=None)
-    resolutionTime: Optional[int] = field(kw_only=True, default=None)
-    resolutionProbability: Optional[float] = field(kw_only=True, default=None)
-    # Separating into two FullMarket types would be pointlessly annoying
-    bets: Optional[List[Bet]] = field(kw_only=True, default=None)
-    comments: Optional[List[Bet]] = field(kw_only=True, default=None)
-    outcomeType: str
-    volume: float
-
-    @classmethod
-    def from_json(cls: Type[MarketT], json: Any) -> MarketT:
-        # TODO: *Maybe* clean this up. The API is pretty inconsistent and I don't really see the
-        # benefit of handling all the idiosyncracies.
-        # if 'bets' in json:
-        #     json['bets'] = [Bet.from_json(bet) for bet in json['bets']]
-        # if 'comments' in json:
-        #     json['comments'] = [Comment.from_json(comment) for comment in json['comments']]
-        return cls(**json)  # type: ignore
-
-
-@define
-class BinaryMarket(Market):
-    """A market with a binary resolution
-    Attributes:
-        probability: The current resolution probability
-        p: Something to do with CFMM markets
-        totalLiquidity: Also something to do with CFMM markets
-    """
-
-    probability: float
-    p: Optional[float] = None
-    totalLiquidity: Optional[float] = None
-
-    def get_updates(self) -> Tuple[np.ndarray, np.ndarray]:
-        if self.bets is None:
-            full = get_market(self.id)
-            self.bets = full.bets
-            self.comments = full.comments
-
-        assert self.bets is not None
-        if len(self.bets) == 0:
-            return np.array([self.createdTime]), np.array([self.probability])
-        else:
-            # TODO: Fix the string access after the API is cleaned up
-            times, probabilities = zip(*[(bet['createdTime'], bet['probAfter']) for bet in self.bets])  # type: ignore
-            return np.array(times), np.array(probabilities)
-
-    def start_probability(self) -> float:
-        return self.get_updates()[1][0]
-
-    def final_probability(self) -> float:
-        return self.probability
-
-
-@define
-class MultiMarket(Market):
-    """A market with multiple possible resolutions"""
-
-    def final_probability(self) -> float:
-        if self.bets is None:
-            pass
-        import pdb
-        pdb.set_trace()
-        raise NotImplementedError
-
-
-def get_markets() -> List[Market]:
+def get_markets():
 
     batchSize = 1000
     markets = []
@@ -177,48 +19,33 @@ def get_markets() -> List[Market]:
     while True:
         url = ALL_MARKETS_URL+f'?limit={batchSize}{"&before="+lastMarketID if lastMarketID else ""}'
         print(url)
-        json = requests.get(url, timeout=30).json()
-
-        # If this fails, the code is out of date.
-        all_mechanisms = {x["mechanism"] for x in json}
-        assert all_mechanisms == {"cpmm-1", "dpm-2"}
-
-        markets.extend([BinaryMarket.from_json(x) if 'probability' in x else MultiMarket.from_json(x) for x in json])
+        response = requests.get(url, timeout=30)
+        newMarkets = json.loads(response.text, object_hook=lambda d: SimpleNamespace(**d))
+        markets.extend(newMarkets)
         print('have list of',len(markets))
-        lastMarketID = json[-1]['id']
-        if len(json) < batchSize:
+        lastMarketID = newMarkets[-1].id
+        if len(newMarkets) < batchSize:
             break
-
     return markets
 
-def get_market(market_id: str) -> Market:
+def get_market(market_id: str):
     for attempt in range(10):
         try:
             response = requests.get(SINGLE_MARKET_URL.format(market_id), timeout=20)
-            market = response.json()
-            if "probability" in market:
-                return BinaryMarket.from_json(market)
-            else:
-                return MultiMarket.from_json(market)
+            return json.loads(response.text, object_hook=lambda d: SimpleNamespace(**d))
         except ConnectionResetError as e:
             print("ConnectionResetError, retrying")
             print(e)
-        except requests.exceptions.JSONDecodeError as e:
-            print("JSONDecodeError")
-            print(e)
-            print(response)
-            print('retrying')
     else:
         print("Get market failed 10 times!")
         print(market_id)
 
-def get_lite_market(market_id: str) -> Market:
+def get_lite_market(market_id: str):
     url = ALL_MARKETS_URL+f'?limit=1&before={market_id}'
-    json = requests.get(url, timeout=20).json()[0]
-    market = BinaryMarket.from_json(json) if 'probability' in json else MultiMarket.from_json(json)
-    return market
+    response = requests.get(url, timeout=20)
+    return json.loads(response.text, object_hook=lambda d: SimpleNamespace(**d))[0]
 
-def get_market_cached(market_id: str) -> Market:
+def get_market_cached(market_id: str):
     try:
         full_markets = pickle.load(config.CACHE_LOC.open('rb'))
         if market_id in full_markets:
@@ -230,7 +57,7 @@ def get_market_cached(market_id: str) -> Market:
         return get_market(market_id)
 
 
-def get_full_markets() -> List[Market]:
+def get_full_markets():
     """Get all markets, including bets and comments.
     Not part of the API, but handy. Takes a while to run.
     """
@@ -239,7 +66,7 @@ def get_full_markets() -> List[Market]:
     return [get_market(x.id) for x in markets]
 
 
-def get_full_markets_cached(use_cache: bool = True) -> List[Market]:
+def get_full_markets_cached(use_cache: bool = True):
     """Get all full markets, and cache the results.
     Cache is not timestamped.
     """
