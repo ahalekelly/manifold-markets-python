@@ -32,18 +32,40 @@ def get_market(market_id: str):
     for attempt in range(10):
         try:
             response = requests.get(SINGLE_MARKET_URL.format(market_id), timeout=20)
-            return json.loads(response.text, object_hook=lambda d: SimpleNamespace(**d))
-        except ConnectionResetError as e:
-            print("ConnectionResetError, retrying")
+            if response.status_code == 200:
+                return json.loads(response.text, object_hook=lambda d: SimpleNamespace(**d))
+            else:
+                print(response.text)
+        except requests.exceptions.ReadTimeout as e:
+            print("timeout, retrying")
+            print(e)
+        except Exception as e:
+            print("error, retrying")
             print(e)
     else:
         print("Get market failed 10 times!")
         print(market_id)
+        raise ConnectionError
 
-def get_lite_market(market_id: str):
+def get_lite_market(market_id: str): # must be the id of the market after!
     url = ALL_MARKETS_URL+f'?limit=1&before={market_id}'
-    response = requests.get(url, timeout=20)
-    return json.loads(response.text, object_hook=lambda d: SimpleNamespace(**d))[0]
+    for attempt in range(10):
+        try:
+            response = requests.get(url, timeout=5)
+            if response.status_code == 200:
+                return json.loads(response.text, object_hook=lambda d: SimpleNamespace(**d))[0]
+            else:
+                print(response.text)
+        except requests.exceptions.ReadTimeout as e:
+            print("timeout, retrying")
+            print(e)
+        except Exception as e:
+            print("error, retrying")
+            print(e)
+    else:
+        print("Get market failed 10 times!")
+        print(market_id)
+        raise ConnectionError
 
 def get_market_cached(market_id: str):
     try:
